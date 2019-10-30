@@ -1,0 +1,150 @@
+# association_phenotypes4BGENIE.R
+# date: 13.10.2017; edited: 09.05.2018; edited 23.05.2018, edited for PT 08.06.2018
+# create phenotype input files for BGENIE (which do not have sample IDs, and need to match the order within the BGEN file)
+# genetic data: v3; imputed data, 
+## includes chromosome X, and XY, but sample files are different for these chromosomes, so new input files will be required
+library(data.table)
+
+#------------------------------------
+# Get command line arguments
+args = commandArgs(trailingOnly=TRUE)
+
+# args=c(
+#       # "/data/clusterfs/lag/users/amacar/ukb/input/imp/ukb_imp_chrX_v3_imagingT1_N12245.sample",
+#       # "X",
+#       "/data/clusterfs/lag/users/amacar/ukb/input/imp/ukb_imp_chr19_v3_imagingT1_N12245.sample",
+#       "A",
+#        "ukb21288_ukb21293",
+#        "imagingT1_N12245")
+
+# get sample file as argument
+sample_file=args[1]
+chr_type=args[2] # A for autosomes, X or XY
+pheno_root=args[3] # ukb phenotype batch names
+subset_name=args[4] # subset of data that will be included,, in case not samples are in; should reflect sample_file info
+#------------------------------------
+
+options(stringsAsFactors = FALSE)
+#------------------------------------
+# Set directories, dependent on  system
+if (Sys.info()['sysname']=='Windows') {dir="P://workspaces/"} else {dir="/data/workspaces/lag/workspaces/"}
+imaging_dir=paste(dir,"lg-ukbiobank/working_data/amaia/pheno_files/genetic_v2/",pheno_root,"/summary_phenotypes/",sep="")
+out_dir_base=paste(dir,"lg-ukbiobank/working_data/amaia/genetic_data/",sep="")
+out_dir=paste(out_dir_base,"release_v3/imp/bgenie/",sep="")
+dir.create(file.path(out_dir_base,"release_v3/imp/bgenie"),showWarnings = FALSE)
+
+ukb9246<-read.csv(paste(dir,"lg-ukbiobank/working_data/amaia/demographic/",
+                        "ukb9246_sqc_fam_selectedPhenotypes_imagingSamples.csv",sep=""))
+ukb9246$ukb9246<-1
+ukb9246<-ukb9246[,c("f.eid","ukb9246")]
+colnames(ukb9246)<-c("ID1","ukb9246")
+#------------------------------------
+# Sample files,  read
+#------------------------------------
+
+## read
+sample<-read.table(sample_file,header=TRUE) # actually, use v3: they have the same number of individuals for the autosomes
+# some checks
+table(sample$missing)
+#table(sample$sex)
+
+
+# remove first line which is only 0
+sample[1,]
+sample<-sample[-1,1:2]
+
+#------------------------------------
+# Phenotype file for imaging phenotypes, output from: 
+## ukb21288_ukb21293_PTadj_totalBV_LM_residuals_imagingSubset.R
+#------------------------------------
+covs_name="_noBioCovs_noAssessmentC_TBV"
+region="Planum_Temporale"
+type="Volume"
+key="totalBV"
+#------------------------------------
+# define files
+# output file name, same for all phenotypes
+out_file=paste(out_dir,pheno_root,"_",type,"_sample_",subset_name,"_",region,"_",key,"_phenos4BGENIE.table",sep="")
+# input files
+# PT adj TBV  
+pheno1_imaging_file<-paste(imaging_dir,list.files(imaging_dir,pattern=paste("imaging",covs_name,"*.*Phenotypes_residuals_wHeader.table",sep="")),sep="")
+# TBV + PTadjtBV
+pheno2_imaging_file<-paste(imaging_dir,list.files(imaging_dir,pattern=paste("imaging*.*",key,"*.*Phenotypes_residuals_wHeader.table",sep="")),sep="")
+# merge both pheno files
+for (pheno_imaging_file in c(pheno1_imaging_file,pheno2_imaging_file)){
+  #  read data
+  tmp<-read.table(pheno_imaging_file,header=TRUE)
+  if (pheno_imaging_file==pheno1_imaging_file){
+    pheno_imaging<-tmp[,-c(match("totalBV",colnames(tmp)))]
+    
+  } else {
+    pheno_imaging<-merge(pheno_imaging,tmp,all=TRUE)
+  }
+  # rm(tmp)
+}
+# clean file names
+rm(pheno1_imaging_file,pheno2_imaging_file)
+# check if there are any duplicates
+table(duplicated(pheno_imaging))
+which(table(pheno_imaging$ID1)>1)
+subset(pheno_imaging,ID1=="2877063"|ID1=="3323502"|ID1=="3496404"|ID1=="3926736")[,c("ID1","totalBV","Volume_of_brain_grey_white","residuals_totalBV")]
+# inconsistencies come from the totalBV column, excluded from analysis, based on outliers?
+## so I excluded the totalBV column from the PT covariates...
+
+# select relevant columns, duplicates should disappear
+
+# add col to mark wether samples belong to previous release
+pheno_imaging<-merge(pheno_imaging,ukb9246,all=TRUE,by="ID1")
+pheno_imaging$ukb9246[is.na(pheno_imaging$ukb9246)]<-0
+table(pheno_imaging$ukb9246)
+# get phenos:
+phenosPT<-colnames(pheno_imaging)[grep(paste("residuals*.*",region,sep=""),colnames(pheno_imaging))]
+phenosTBV<-colnames(pheno_imaging)[grep(paste("residuals*.*",key,sep=""),colnames(pheno_imaging))]
+phenos<-c(phenosPT,phenosTBV)
+# combine pheno files
+if (length(grep("X",chr_type))>0) {
+      out_file2<-gsub("sample",paste("sample",chr_type,sep=""),out_file)
+      } else {out_file2<-out_file }
+if (file.exists(out_file2)==FALSE) {
+    # make sure that the pheno file matches the order from the sample
+    pheno_samples<-merge(sample,pheno_imaging,by.x=c("ID_1","ID_2"),by.y=c("ID1","ID2"),all.x=TRUE,stringsAsFactors=FALSE) #,
+    pheno_samples$array<-as.character(pheno_samples$array)
+    pheno_samples$batch<-as.character(pheno_samples$batch)
+    pheno_samples<-pheno_samples[,c("ID_1","ukb9246",phenos)]
+    # check if order is the same
+    table(sample$ID_1==pheno_samples$ID_1)
+    pheno_samples<-pheno_samples[match(sample$ID_1,pheno_samples$ID_1),]
+    print('Number of sample IDs in phenotype file that matches the sample file:')
+    print(sum(sample$ID_1==pheno_samples$ID_1))
+    if (sum(sample$ID_1==pheno_samples$ID_1)==NROW(sample)) {
+        print('Sample IDs in phenotype file matches the sample file; proceed to save')
+      # create subsets of the data, given: ukb9456 or ukb21288_ukb21293
+      pheno_samples[,paste(phenos,"_ukb9246",sep="")]<-pheno_samples[,phenos]
+      pheno_samples[,paste(phenos,"_",pheno_root,sep="")]<-pheno_samples[,phenos]
+      # blank inds not present within each subset
+      w<-which(pheno_samples$ukb9246==1)
+      pheno_samples[w,paste(phenos,"_ukb9246",sep="")]<-NA
+      pheno_samples[-w,paste(phenos,"_",pheno_root,sep="")]<-NA
+      
+      # missing data is NA, need to specify this when running BGENIE, replace to -999
+      pheno_samples[is.na(pheno_samples)]<-(-999)
+      
+      # or alternatively use the --miss parameter to code for missingness (NA)
+      
+      # save file with phenotypes and covariates
+      # include just one ID, to be able to double check
+      phenos2<-c(colnames(pheno_samples)[grep(region,colnames(pheno_samples))],
+                 colnames(pheno_samples)[grep(key,colnames(pheno_samples))])
+      phenos2<-phenos2[grep("ukb",phenos2,invert=TRUE)] # do not select subsets of releases
+      write.table(pheno_samples[,c("ID_1",phenos2)],file=out_file2,row.names=FALSE,quote=FALSE)
+      } else {
+        print("Error. The order of samples in phenotype file does not match the order in the sample file. Check what is going on!")
+      }
+  # rm(pheno_samples)
+  }
+  # clean intermediate files
+rm(out_file2)
+
+rm(out_file,pheno_imaging_file,pheno_imaging,phenos)
+  
+

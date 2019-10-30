@@ -1,0 +1,22 @@
+# Xiangzhen has run the VBM association analysis with rs41298373 and rs7420166 genotypes.
+# Results are stored as nifti files, and placed in: 
+/data/workspaces/lag/workspaces/lg-ukbiobank/analysis/xiangzhen/vol_asym/analysis/rs*
+# "Results for each SNP are in the corresponding folder. If you have any questions or want to create figures for showing results in a specific way, feel free to let me know."
+## ./glmout_ai/rs.contrast/z.nii.gz
+## .//glmout_vbm/rs.contrast/z.nii.gz
+
+# Create a figure from results:
+# vncserver 
+## fsleyes # or fslview_deprecated
+# add
+## standard> /usr/local/apps/fsl/data/standard/MNI152_T1_1mm_brain.nii.gz
+## atlas> /usr/local/apps/fsl/data/atlases/HarvardOxford-Cortical.xml
+
+# save screenshots:
+/data/workspaces/lag/workspaces/lg-ukbiobank/working_data/amaia/genetic_data/PT/imagingT1_N18057/lead_snps/voxel_vertex/FSLeyes_plots
+
+## command to recreate scenario
+# not working, gives error about the --volume argument, but cannot figure out why
+
+ 
+### create ROI of the PT in HO, for the poster
